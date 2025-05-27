@@ -1,0 +1,41 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Virtual environment
+.env/
+.venv/
+env/
+venv/
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Output files and results
+#heatmaps/
+#*.png
+#*.pdf
+#*.txt
+#*.gz
+
+# Logs
+*.log
+
+# Build directories
+build/
+dist/
+*.egg-info/
+
+# Ignore IDE and editor configs
+.vscode/
+.idea/
+
+# Compiled C/C++ files (if any auxiliary code is added)
+*.out
+*.o
+*.exe
