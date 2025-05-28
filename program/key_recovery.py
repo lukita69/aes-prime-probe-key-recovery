@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
 import os
+import sys
 import gzip
 from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
@@ -103,7 +104,12 @@ def extract_key():
 
 # Entry point
 if __name__ == "__main__":
-    input_file = get_input_file()
+    if len(sys.argv) > 1:
+        input_file = sys.argv[1]
+    else:
+        input_file = get_input_file()
+
+    print(f"\nUsing input file: {input_file}")
     analyze_output_parallel(input_file)
     generate_heatmaps("heatmaps")
     key = extract_key()

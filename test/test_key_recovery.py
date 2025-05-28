@@ -1,46 +1,57 @@
-import subprocess
 import os
 import gzip
-import shutil
+import subprocess
+import tempfile
+import sys
+from Crypto.Cipher import AES
+from Crypto.Random import get_random_bytes
+import random
 
-# Paths
-PROGRAM_DIR = os.path.join(os.path.dirname(__file__), '..', 'program')
-TEST_INPUT_GZ = os.path.join(os.path.dirname(__file__), 'test_input.txt.gz')
-DATA_DIR = os.path.join(os.path.dirname(__file__), '..', 'data')
-TEMP_INPUT_TXT = os.path.join(DATA_DIR, 'output.txt')
-EXPECTED_KEY_PATH = os.path.join(os.path.dirname(__file__), 'expected_key.txt')
-SCRIPT_PATH = os.path.join(PROGRAM_DIR, 'key_recovery.py')
+PYTHON_EXECUTABLE = sys.executable  # Dynamically use current Python
+SCRIPT_PATH = os.path.join(os.path.dirname(__file__), '..', 'program', 'key_recovery.py')
 
-# Extract the test file
-with gzip.open(TEST_INPUT_GZ, 'rt') as fin, open(TEMP_INPUT_TXT, 'w') as fout:
-    shutil.copyfileobj(fin, fout)
+def generate_test_file(file_path, key_bytes, n_samples=15000):
+    cipher = AES.new(key_bytes, AES.MODE_ECB)
+    with gzip.open(file_path, 'wt') as f:
+        for _ in range(n_samples):
+            pt = get_random_bytes(16)
+            ct = cipher.encrypt(pt)
+            cl_values = [random.randint(50, 80) for _ in range(64)]
+            for i in range(16):
+                cache_set = (pt[i] ^ key_bytes[i]) % 64
+                cl_values[cache_set] += random.randint(300, 400)
+            cl_values = list(map(str, cl_values))
+            line = f"{pt.hex()} {ct.hex()} {' '.join(cl_values)}\n"
+            f.write(line)
 
-# Run the key recovery script and capture output
-result = subprocess.run(['python', SCRIPT_PATH], capture_output=True, text=True)
+def run_key_recovery(test_file_path):
+    result = subprocess.run(
+        [PYTHON_EXECUTABLE, SCRIPT_PATH, test_file_path],
+        capture_output=True, text=True
+    )
+    print("=== STDOUT ===")
+    print(result.stdout)
+    print("=== STDERR ===")
+    print(result.stderr)
 
-# ✅ Add this debug line to inspect what the script actually printed
-print("=== Script Output ===")
-print(result.stdout)
-print("=====================")
+    for line in result.stdout.splitlines():
+        if "Recovered AES Key:" in line:
+            return line.split(":")[-1].strip()
+    raise RuntimeError("Could not extract key from output.")
 
-# Clean up temporary input file
-os.remove(TEMP_INPUT_TXT)
+def main():
+    known_key_hex = "0123456789abcdeffedcba9876543210"
+    key_bytes = bytes.fromhex(known_key_hex)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_path = os.path.join(tmpdir, "temp_test.gz")
+        generate_test_file(test_path, key_bytes)
+        print(f"Running test with known key: {known_key_hex}")
+        recovered_key = run_key_recovery(test_path)
+        print(f"Recovered Key: {recovered_key}")
+        if recovered_key.lower() == known_key_hex.lower():
+            print("\nTest Passed!")
+        else:
+            print("\nTest Failed!")
 
-# Extract recovered key from script output
-recovered_key_line = next((line for line in result.stdout.splitlines() if 'Recovered AES Key:' in line), None)
-if recovered_key_line:
-    recovered_key = recovered_key_line.split(':')[-1].strip()
-else:
-    raise RuntimeError("Failed to extract recovered key from output")
-
-# Load expected key
-with open(EXPECTED_KEY_PATH, 'r') as f:
-    expected_key = f.read().strip()
-
-# Compare and report result
-print("Recovered Key:", recovered_key)
-print("Expected Key:", expected_key)
-if recovered_key.lower() == expected_key.lower():
-    print("\n✅ Test Passed: Recovered key matches expected key.")
-else:
-    print("\n❌ Test Failed: Recovered key does not match expected key.")
+if __name__ == "__main__":
+    main()
