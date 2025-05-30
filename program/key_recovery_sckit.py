@@ -7,13 +7,14 @@ import numpy as np
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.preprocessing import StandardScaler
 
-OUTPUT_FILE = "./data/output.txt.gz"  # Adjust path if needed
-CACHE_SETS = 64
-KEY_BYTES = 16
-NIBBLE_VALUES = 16
-
+# Constants defining dataset and AES layout
+OUTPUT_FILE = "./data/output.txt.gz"  # Path to input trace file
+CACHE_SETS = 64                       # Number of cache lines measured per encryption
+KEY_BYTES = 16                        # AES uses 16 key bytes (128 bits)
+NIBBLE_VALUES = 16                    # Possible high nibble values (4-bit)
 
 def parse_output_file(path):
+    """Load and parse plaintexts and cache access timings from the trace file."""
     plaintexts, timings = [], []
     with gzip.open(path, 'rt') as f:
         for line in f:
@@ -24,27 +25,29 @@ def parse_output_file(path):
             timings.append(times)
     return np.array(plaintexts), np.array(timings)
 
-
 def recover_nibble(args):
+    """Recover the most likely high nibble of a key byte using Linear Discriminant Analysis (LDA)."""
     byte_index, plaintexts, timings_norm = args
     X, y = [], []
     for i in range(len(plaintexts)):
-        nibble = (plaintexts[i][byte_index] >> 4) & 0xF
+        nibble = (plaintexts[i][byte_index] >> 4) & 0xF  # Extract high nibble of plaintext byte
         X.append(timings_norm[i])
         y.append(nibble)
 
     lda = LinearDiscriminantAnalysis()
-    lda.fit(X, y)
-    preds = lda.predict(X)
+    lda.fit(X, y)  # Train classifier
+    preds = lda.predict(X)  # Predict on training set
+
+    # Confidence score for each nibble: mean prediction match
     scores = [np.mean(preds == n) for n in range(NIBBLE_VALUES)]
 
     return byte_index, int(np.argmax(scores)), scores
 
-
 def generate_heatmap(scores_matrix, output_dir="heatmaps"):
+    """Generate individual and combined heatmaps from prediction scores."""
     os.makedirs(output_dir, exist_ok=True)
 
-    # Individual heatmaps: 1-row heatmap for each byte
+    # Per-byte 1D heatmaps
     for byte_index, scores in enumerate(scores_matrix):
         data = np.array(scores).reshape(1, -1)
         plt.figure(figsize=(8, 1.2))
@@ -71,10 +74,10 @@ def generate_heatmap(scores_matrix, output_dir="heatmaps"):
     plt.savefig(f"{output_dir}/combined_heatmap.png")
     plt.close()
 
-
 def main():
     print("[*] Loading and parsing output...")
     plaintexts, timings = parse_output_file(OUTPUT_FILE)
+
     print("[*] Normalizing timings...")
     timings_norm = StandardScaler().fit_transform(timings)
 
@@ -83,16 +86,14 @@ def main():
         args = [(i, plaintexts, timings_norm) for i in range(KEY_BYTES)]
         results = pool.map(recover_nibble, args)
 
-    results.sort()
+    results.sort()  # Sort by byte index
     recovered_key = ''.join(f'{nibble:x}?' for _, nibble, _ in results)
     print("\n[+] Recovered AES Key (High Nibbles Only):")
     print(recovered_key)
 
-    # Heatmap generation
     print("[*] Generating heatmaps...")
     scores_matrix = [scores for _, _, scores in results]
     generate_heatmap(scores_matrix, output_dir="./report/heatmaps")
-
 
 if __name__ == "__main__":
     main()
