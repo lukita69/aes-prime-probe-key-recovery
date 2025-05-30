@@ -30,15 +30,6 @@ import plotly.io as pio
 from tqdm import tqdm
 from joblib import Parallel, delayed, cpu_count
 
-# Shared global data to avoid copying large arrays in parallel
-global_pts = None
-global_timings = None
-
-def init_globals(pts, timings):
-    global global_pts, global_timings
-    global_pts = pts
-    global_timings = timings
-
 def load_data(filename):
     """Load plaintext and cache timing data from gzipped or plain text file."""
     plaintexts, timings = [], []
@@ -67,11 +58,11 @@ def compute_mi(mask, values):
     binned = np.digitize(values, np.histogram(values, bins=10)[1])
     return mutual_info_score(mask, binned)
 
-def score_byte(idx):
+def score_byte(idx, pts, timings):
     """Score key guesses for a single AES byte using MI and cache line timing."""
-    pt_byte = global_pts[:, idx]
+    pt_byte = pts[:, idx]
     t_idx = idx % 4  # map byte to corresponding T-table
-    relevant_timings = global_timings[:, t_idx * 16:(t_idx + 1) * 16]
+    relevant_timings = timings[:, t_idx * 16:(t_idx + 1) * 16]
     mi_matrix = np.zeros((256, 16))
 
     for k in range(256):
@@ -92,8 +83,8 @@ def score_byte(idx):
 
 def recover_all(pts, timings, procs):
     """Run CPA (MI-based) for all 16 AES key bytes in parallel using joblib."""
-    results = Parallel(n_jobs=procs, backend="threading", initializer=init_globals, initargs=(pts, timings))(
-        delayed(score_byte)(i) for i in tqdm(range(16), desc="Recovering key")
+    results = Parallel(n_jobs=procs, backend="threading", prefer="threads")(
+        delayed(score_byte)(i, pts, timings) for i in tqdm(range(16), desc="Recovering key")
     )
     results.sort(key=lambda x: x[0])
     key = bytes((r[1] & 0xF0) for r in results)
