@@ -1,15 +1,17 @@
 import gzip
-import numpy as np
+import os
+from multiprocessing import Pool, cpu_count
+
 import matplotlib.pyplot as plt
+import numpy as np
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.preprocessing import StandardScaler
-from multiprocessing import Pool, cpu_count
-import os
 
 OUTPUT_FILE = "./data/output.txt.gz"  # Adjust path if needed
 CACHE_SETS = 64
 KEY_BYTES = 16
 NIBBLE_VALUES = 16
+
 
 def parse_output_file(path):
     plaintexts, timings = [], []
@@ -21,6 +23,7 @@ def parse_output_file(path):
             plaintexts.append(np.frombuffer(pt, dtype=np.uint8))
             timings.append(times)
     return np.array(plaintexts), np.array(timings)
+
 
 def recover_nibble(args):
     byte_index, plaintexts, timings_norm = args
@@ -36,6 +39,7 @@ def recover_nibble(args):
     scores = [np.mean(preds == n) for n in range(NIBBLE_VALUES)]
 
     return byte_index, int(np.argmax(scores)), scores
+
 
 def generate_heatmap(scores_matrix, output_dir="heatmaps"):
     os.makedirs(output_dir, exist_ok=True)
@@ -88,6 +92,7 @@ def main():
     print("[*] Generating heatmaps...")
     scores_matrix = [scores for _, _, scores in results]
     generate_heatmap(scores_matrix, output_dir="./report/heatmaps")
+
 
 if __name__ == "__main__":
     main()

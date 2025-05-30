@@ -1,15 +1,13 @@
 """
-recover_key.py: Recover AES key from a Prime+Probe cache attack on AES using Correlation Power Analysis (CPA).
+AES key (only high nibble) recovery from Prime+Probe cache attack output file using CPA.
 
-Combines:
-  - CPA on upper nibble of AES key byte (due to 16 cache-line granularity)
-  - Multiprocessing for full performance
-  - Heatmap generation (static and interactive)
-  - CSV export of top 5 key byte guesses
-  - Clean documentation and modular structure
+Steps:
+- Load data (plaintexts and cache timings)
+- Use CPA per key byte to find best matching high nibble
+- Save results, generate heatmaps and top guess CSV
 
 Usage:
-  python recover_key.py -i output.txt.gz -o recovered_key.txt -d heatmaps --csv top_guesses.csv
+  python key_recovery_cpa.py -i ./data/output.txt.gz -o ./report/recovered_key.txt -d ./report/heatmaps --csv .report/top_guesses.csv
 """
 
 import argparse
@@ -27,16 +25,8 @@ import seaborn as sns
 from tqdm import tqdm
 
 
-# -------------------- Data Loader --------------------
 def load_data(filename):
-    """
-    Load plaintexts and timing measurements from output file.
-    Each line contains plaintext, ciphertext, and 64 cache timings.
-
-    Returns:
-        plaintexts: ndarray (N, 16)
-        times_arr: ndarray (N, 64)
-    """
+    """Load plaintexts and timing measurements from output.txt or .gz."""
     pts, times = [], []
     opener = gzip.open if filename.endswith('.gz') else open
     with opener(filename, 'rt') as f:
@@ -48,17 +38,13 @@ def load_data(filename):
             vals = list(map(int, parts[2:]))
             if len(vals) != 64:
                 continue
-            pts.append([int(pt_hex[i:i+2], 16) for i in range(0, 32, 2)])
+            pts.append([int(pt_hex[i:i + 2], 16) for i in range(0, 32, 2)])
             times.append(vals)
     return np.array(pts, dtype=np.uint8), np.array(times, dtype=np.float32)
 
 
-# -------------------- Key Scoring --------------------
 def _score_key_byte(task):
-    """
-    Compute correlation matrix for one key byte using CPA.
-    Returns top guess, score, and correlation matrix.
-    """
+    """CPA for one key byte and return score matrix and best guesses."""
     byte_idx, plaintexts, times_arr = task
     pts = plaintexts[:, byte_idx]
     table_idx = byte_idx % 4
@@ -93,17 +79,8 @@ def _score_key_byte(task):
     return byte_idx, int(best_guess), float(best_score), corr_matrix, top_guesses
 
 
-# -------------------- Recovery Driver --------------------
 def recover_key_bytes(plaintexts, times_arr, processes=None):
-    """
-    Launch key recovery on all 16 bytes in parallel.
-
-    Returns:
-        key_bytes: upper-nibble masked bytes
-        corr_matrices: dict {byte_idx: 256x16 matrix}
-        results: list of (byte_idx, guess, score)
-        top_guesses_all: list of top 5 guesses per byte
-    """
+    """CPA in parallel on all 16 bytes."""
     if processes is None:
         processes = cpu_count()
     tasks = [(b, plaintexts, times_arr) for b in range(16)]
@@ -111,8 +88,8 @@ def recover_key_bytes(plaintexts, times_arr, processes=None):
 
     with Pool(processes) as pool:
         for byte_idx, guess, score, mat, top5 in tqdm(
-            pool.imap_unordered(_score_key_byte, tasks),
-            total=16, desc="Scoring bytes"
+                pool.imap_unordered(_score_key_byte, tasks),
+                total=16, desc="Recovering key byte per byte"
         ):
             corr_matrices[byte_idx] = mat
             results.append((byte_idx, guess, score))
@@ -123,8 +100,8 @@ def recover_key_bytes(plaintexts, times_arr, processes=None):
     return key_bytes, corr_matrices, results, top_guesses_all
 
 
-# -------------------- Visualization --------------------
 def generate_heatmaps(corr_matrices, out_dir):
+    """Create one heatmap per byte and one combined (high nibble only)."""
     os.makedirs(out_dir, exist_ok=True)
     combined = np.zeros((16, 256))
 
@@ -138,14 +115,14 @@ def generate_heatmaps(corr_matrices, out_dir):
         ticks = list(range(0, 256, step))
         ax.set_yticks([t + 0.5 for t in ticks])
         ax.set_yticklabels([f"{t:02x}" for t in ticks], rotation=0)
-        ax.set_title(f"CPA Corr: Byte {byte_idx} (Tbl {byte_idx%4})")
+        ax.set_title(f"CPA Corr: Byte {byte_idx} (Table {byte_idx % 4})")
         ax.set_xlabel('Cache Line')
         ax.set_ylabel('Key Guess (hex)')
         fig.tight_layout()
         fig.savefig(os.path.join(out_dir, f"heatmap_byte_{byte_idx}.png"))
         plt.close(fig)
 
-    # Collapse to 16 high-nibble bins (each 16-byte group) Combined heatmap
+    # Combined heatmap
     collapsed = np.zeros((16, 16))
     for byte_idx in range(16):
         for high_nibble in range(16):
@@ -157,14 +134,14 @@ def generate_heatmaps(corr_matrices, out_dir):
     sns.heatmap(collapsed, cmap="plasma",
                 xticklabels=[f"0x{hn << 4:02x}" for hn in range(16)],
                 yticklabels=[f"B{i}" for i in range(16)], ax=ax)
-    ax.set_title("Top Corr per High Nibble Guess")
+    ax.set_title("Top CPA-value per Key Guess (high nibble only)")
     ax.set_xlabel("High Nibble")
     ax.set_ylabel("Key Byte")
     fig.tight_layout()
     fig.savefig(os.path.join(out_dir, "combined_heatmap.png"))
     plt.close(fig)
 
-    # Interactive Plotly heatmap
+    # Interactive heatmap
     fig_plotly = px.imshow(collapsed,
                            labels=dict(x="High Nibble", y="Key Byte", color="Corr"),
                            x=[f"0x{hn << 4:02x}" for hn in range(16)],
@@ -173,13 +150,8 @@ def generate_heatmaps(corr_matrices, out_dir):
     pio.write_html(fig_plotly, file=os.path.join(out_dir, "interactive_heatmap.html"), auto_open=False)
 
 
-
-# -------------------- CSV Export --------------------
 def export_top_guesses(top_guesses_all, out_file):
-    """
-        Export top 5 guesses per byte, grouped by high nibble only.
-        Only one entry per high nibble is kept (the one with the highest correlation).
-    """
+    """Save top 5 high nibble guesses per key byte to CSV."""
     with open(out_file, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(['Byte', 'Rank', 'HighNibble', 'Correlation'])
@@ -190,7 +162,7 @@ def export_top_guesses(top_guesses_all, out_file):
                 high = k & 0xf0
                 grouped[high].append((k, c))
 
-            # Select max correlation entry per high nibble
+            # Select max correlation per high nibble
             high_nibble_scores = {
                 high: max(entries, key=lambda x: x[1])
                 for high, entries in grouped.items()
@@ -201,9 +173,8 @@ def export_top_guesses(top_guesses_all, out_file):
                 writer.writerow([byte_idx, rank, f"{hn:02x}", f"{score:.5f}"])
 
 
-# -------------------- CLI Interface --------------------
 def parse_args():
-    parser = argparse.ArgumentParser(description='AES CPA key recovery via Prime+Probe attack.')
+    parser = argparse.ArgumentParser(description='AES CPA key recovery via Prime+Probe attack output file.')
     parser.add_argument('-i', '--input', type=str, required=True, help='Input file (.txt or .gz)')
     parser.add_argument('-o', '--output', type=str, help='Write recovered key to file')
     parser.add_argument('-d', '--heatmap-dir', type=str, help='Output directory for heatmaps')
@@ -214,28 +185,28 @@ def parse_args():
 
 def main():
     args = parse_args()
-    print(f"[*] Loading data from: {args.input}")
+    print(f"Loading data from: {args.input}")
     pts, times_arr = load_data(args.input)
-    print(f"[*] Loaded {pts.shape[0]} samples.")
+    print(f"Loaded {pts.shape[0]} samples.")
 
     key_bytes, corr_matrices, results, top_guesses_all = recover_key_bytes(pts, times_arr, args.processes)
     key_hex = key_bytes.hex()
-    print(f"[+] Recovered AES key (upper nibble only): {key_hex}")
+    print(f"[OK] Recovered AES key (64bit out of the 128bit key): {key_hex}")
 
     if args.output:
         with open(args.output, 'w') as f:
             f.write(key_hex)
-        print(f"[*] Key written to: {args.output}")
+        print(f"Key written to: {args.output}")
 
     if args.csv:
         export_top_guesses(top_guesses_all, args.csv)
-        print(f"[*] Top guesses exported to: {args.csv}")
+        print(f"Top guesses exported to: {args.csv}")
 
     if args.heatmap_dir:
-        print(f"[*] Generating heatmaps in: {args.heatmap_dir}")
+        print(f"Generating heatmaps in: {args.heatmap_dir}")
         generate_heatmaps(corr_matrices, args.heatmap_dir)
 
-    print("[*] Done.")
+    print("Done!")
 
 
 if __name__ == '__main__':

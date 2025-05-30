@@ -1,9 +1,9 @@
-from Crypto.Cipher import AES
-from binascii import unhexlify
 import gzip
 
+from Crypto.Cipher import AES
+
 # Define the recovered key
-key_hex = "A965F96D2029FE5A2232A87DEF7D3C7A"
+key_hex = "10a0601060c06070303030904010d0f0"
 key_bytes = bytes.fromhex(key_hex)
 
 # Set up AES cipher

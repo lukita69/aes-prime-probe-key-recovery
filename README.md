@@ -1,6 +1,8 @@
 # AES Prime+Probe Key Recovery
 
-This project demonstrates a cache-based side-channel attack using the **Prime+Probe** technique to recover an AES encryption key. It targets T-table accesses during the **first round of AES**, analyzing timing data gathered via cache set probes.
+This project demonstrates a cache-based side-channel attack using the **Prime+Probe** technique to recover an AES
+encryption key. It targets T-table accesses during the **first round of AES**, analyzing timing data gathered via cache
+set probes.
 
 ## 📁 Project Structure
 
@@ -10,8 +12,8 @@ aes-prime-probe-key-recovery/
 │   └── key_recovery.py             # Main analysis and heatmap generation script
 ├── data/                           # Input trace files
 │   └── output.txt.gz               # Compressed cache access trace
-├── heatmaps/                       # Generated heatmaps (output)
 ├── report/                         # Written deliverables (PDFs)
+│   ├── heatmaps/                   # Generated heatmaps (output)
 │   ├── approach.pdf
 │   ├── heatmap.pdf
 │   └── info.txt
@@ -42,10 +44,11 @@ aes-prime-probe-key-recovery/
 Ensure `output.txt` or `output.txt.gz` is in the `data/` directory. Then run:
 
 ```bash
-python program/key_recovery.py
+python program/key_recovery_max_avg.py
 ```
 
 This script:
+
 - Analyzes cache access timings
 - Correlates them with AES key byte candidates
 - Generates heatmaps per key byte
@@ -55,7 +58,8 @@ This script:
 
 - Each AES invocation generates timing data across 64 cache sets.
 - The script evaluates all 256 key byte guesses for each of the 16 AES key positions.
-- For each guess `k` at position `i`, it computes `index = plaintext[i] ⊕ k`, maps it to a cache set, and aggregates the corresponding access timing.
+- For each guess `k` at position `i`, it computes `index = plaintext[i] ⊕ k`, maps it to a cache set, and aggregates the
+  corresponding access timing.
 - The best guess is chosen by maximum aggregate timing correlation.
 - Heatmaps visualize timing correlation intensity across key guesses and cache sets.
 
@@ -66,4 +70,5 @@ This script:
 
 ## 📄 License
 
-This repository is intended for academic and educational use only. License terms can be added if the project is made public.
+This repository is intended for academic and educational use only. License terms can be added if the project is made
+public.
