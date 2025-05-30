@@ -29,6 +29,8 @@ import seaborn as sns
 import plotly.express as px
 import plotly.io as pio
 from tqdm import tqdm
+from joblib import Parallel, delayed, cpu_count
+
 
 def load_data(filename):
     """Load plaintext and cache timing data from gzipped or plain text file."""
@@ -47,16 +49,19 @@ def load_data(filename):
             timings.append(times)
     return np.array(plaintexts, dtype=np.uint8), np.array(timings, dtype=np.float32)
 
+
 def filter_outliers(pts, timings, z_thresh=3.0):
     """Remove samples where any timing value is too far from mean (z-score filter)."""
     z = np.abs((timings - timings.mean(axis=0)) / timings.std(axis=0))
     keep = (z < z_thresh).all(axis=1)
     return pts[keep], timings[keep]
 
+
 def compute_mi(mask, values):
     """Compute mutual information between a binary mask and timing vector."""
     binned = np.digitize(values, np.histogram(values, bins=10)[1])
     return mutual_info_score(mask, binned)
+
 
 def score_byte(idx, pts, timings):
     """Score key guesses for a single AES byte using MI and cache line timing.
@@ -90,20 +95,19 @@ def score_byte(idx, pts, timings):
     top_guesses = [(int(k), float(scores[k])) for k in top5]
     return idx, best, scores[best], conf, mi_matrix, top_guesses
 
-def score_byte_wrapper(args):
-    return score_byte(*args)
 
 def recover_all(pts, timings, procs):
-    """Run CPA (MI-based) for all 16 AES key bytes in parallel."""
-    args = [(i, pts, timings) for i in range(16)]
-    with Pool(procs) as pool:
-        results = list(tqdm(pool.imap_unordered(score_byte_wrapper, args), total=16))
+    """Run CPA (MI-based) for all 16 AES key bytes in parallel using joblib."""
+    results = Parallel(n_jobs=procs, backend="loky")(
+        delayed(score_byte)(i, pts, timings) for i in tqdm(range(16))
+    )
     results.sort(key=lambda x: x[0])
     key = bytes((r[1] & 0xF0) for r in results)
     confidences = [r[3] for r in results]
     matrices = {r[0]: r[4] for r in results}
     top_guesses_all = [(r[0], r[5]) for r in results]
     return key, confidences, matrices, top_guesses_all
+
 
 def export_top_guesses(top_guesses_all, out_file):
     """Save top high nibble guesses per byte to CSV."""
@@ -120,6 +124,7 @@ def export_top_guesses(top_guesses_all, out_file):
             sorted_hn = sorted(top_by_high.items(), key=lambda x: x[1][1], reverse=True)
             for rank, (hn, (_, score)) in enumerate(sorted_hn[:5], 1):
                 writer.writerow([byte_idx, rank, f"{hn:02x}", f"{score:.5f}"])
+
 
 def plot_combined_heatmap(matrices, out_path):
     """Create a summary heatmap of top MI scores per high nibble per byte."""
@@ -139,6 +144,7 @@ def plot_combined_heatmap(matrices, out_path):
                            y=[f"B{i}" for i in range(16)], color_continuous_scale='plasma')
     pio.write_html(fig_plotly, file=os.path.splitext(out_path)[0] + ".html", auto_open=False)
 
+
 def plot_individual_heatmaps(matrices, out_dir):
     """Create individual heatmaps for each key byte guess vs. cache line."""
     os.makedirs(out_dir, exist_ok=True)
@@ -156,6 +162,7 @@ def plot_individual_heatmaps(matrices, out_dir):
         plt.tight_layout()
         plt.savefig(os.path.join(out_dir, f"byte_{byte_index:02}.png"))
         plt.close()
+
 
 def main():
     parser = argparse.ArgumentParser(description="AES high-nibble recovery using MI-CPA from Prime+Probe data")
@@ -188,6 +195,7 @@ def main():
     if args.csv:
         export_top_guesses(top_guesses_all, args.csv)
         print(f"Top guesses written to: {args.csv}")
+
 
 if __name__ == "__main__":
     main()
