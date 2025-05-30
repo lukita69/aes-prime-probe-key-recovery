@@ -92,7 +92,7 @@ def score_byte(idx):
 
 def recover_all(pts, timings, procs):
     """Run CPA (MI-based) for all 16 AES key bytes in parallel using joblib."""
-    results = Parallel(n_jobs=procs, backend="threading", prefer="threads",
+    results = Parallel(n_jobs=procs,
                        initializer=init_globals, initargs=(pts, timings))(
         delayed(score_byte)(i) for i in tqdm(range(16), desc="Recovering key")
     )
