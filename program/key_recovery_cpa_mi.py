@@ -90,11 +90,14 @@ def score_byte(idx, pts, timings):
     top_guesses = [(int(k), float(scores[k])) for k in top5]
     return idx, best, scores[best], conf, mi_matrix, top_guesses
 
+def score_byte_wrapper(args):
+    return score_byte(*args)
+
 def recover_all(pts, timings, procs):
     """Run CPA (MI-based) for all 16 AES key bytes in parallel."""
     args = [(i, pts, timings) for i in range(16)]
     with Pool(procs) as pool:
-        results = list(tqdm(pool.imap_unordered(lambda x: score_byte(*x), args), total=16))
+        results = list(tqdm(pool.imap_unordered(score_byte_wrapper, args), total=16))
     results.sort(key=lambda x: x[0])
     key = bytes((r[1] & 0xF0) for r in results)
     confidences = [r[3] for r in results]

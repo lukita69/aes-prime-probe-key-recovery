@@ -8,6 +8,7 @@ This project implements and compares several techniques for recovering the **hig
 aes-prime-probe-key-recovery/
 ├── program/                        # Source code for each recovery method
 │   ├── key_recovery_cpa.py         # CPA-based recovery (most accurate)
+│   ├── key_recovery_cpa_mi.py      # CPA-based recovery with mutual information
 │   ├── key_recovery_skit.py        # Experimental scikit-learn-based variant
 │   ├── key_recovery_sum_avg.py     # Sum-Average-based heuristic key recovery approach
 │   ├── key_recovery_sum_max.py     # Sum-Max-based heuristic key recovery approach
@@ -46,6 +47,11 @@ Three distinct approaches are used to estimate key high nibbles from the timing 
 - **CPA (Correlation Power Analysis)**:
   - Statistically correlates expected cache access patterns (based on key guesses) with measured timing data.
   - Most accurate and robust method implemented.
+
+- **CPA with Mutual Information**:
+  - An extension of the CPA method that incorporates mutual information to enhance key recovery accuracy.
+  - This method is still experimental and may not be fully optimized.
+  - It uses the same basic structure as the CPA method but applies additional statistical techniques to improve results.
 
 An additional method (`key_recovery_sckit.py`) explores experimental classification using scikit-learn, but is not currently part of the core analysis pipeline.
 
