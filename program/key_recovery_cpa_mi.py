@@ -98,7 +98,7 @@ def recover_all(pts, timings, procs):
     results.sort(key=lambda x: x[0])
     key = bytes((r[1] & 0xF0) for r in results)
     confidences = [r[3] for r in results]
-    matrices = {r[0]: r[4] for r in results]
+    matrices = {r[0]: r[4] for r in results}
     top_guesses_all = [(r[0], r[5]) for r in results]
     return key, confidences, matrices, top_guesses_all
 
