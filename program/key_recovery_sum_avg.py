@@ -7,9 +7,8 @@ from multiprocessing import Pool, cpu_count
 from tqdm import tqdm
 import matplotlib
 
-matplotlib.use('Agg')  # For headless environments
+matplotlib.use('Agg')
 
-# Load data function
 def load_data(filename):
     pts, times = [], []
     opener = gzip.open if filename.endswith('.gz') else open
@@ -23,7 +22,6 @@ def load_data(filename):
             times.append(list(map(int, parts[2:])))
     return np.array(pts, dtype=np.uint8), np.array(times, dtype=np.float32)
 
-# Scoring function for multiprocessing
 def _score_byte(args):
     byte_idx, pts, times_arr = args
     table_idx = byte_idx % 4
@@ -47,7 +45,6 @@ def _score_byte(args):
     best_guess = np.argmax(scores)
     return byte_idx, best_guess, heatmap
 
-# Main key recovery
 def recover_key_simple(pts, times_arr, processes=None):
     if processes is None:
         processes = cpu_count()
@@ -63,7 +60,6 @@ def recover_key_simple(pts, times_arr, processes=None):
 
     return bytes(key_bytes), heatmaps
 
-# Heatmap generation
 def generate_heatmaps(heatmaps, out_dir="../report/heatmaps_sumavg"):
     os.makedirs(out_dir, exist_ok=True)
 
@@ -87,8 +83,6 @@ def generate_heatmaps(heatmaps, out_dir="../report/heatmaps_sumavg"):
         fig.savefig(os.path.join(out_dir, f"heatmap_byte_{byte_idx}.png"))
         plt.close(fig)
 
-
-# Run the whole process
 if __name__ == "__main__":
     pts, times = load_data("../data/output.txt.gz")
     key, heatmaps = recover_key_simple(pts, times)

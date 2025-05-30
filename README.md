@@ -44,7 +44,7 @@ aes-prime-probe-key-recovery/
 Ensure `output.txt` or `output.txt.gz` is in the `data/` directory. Then run:
 
 ```bash
-python program/key_recovery_max_avg.py
+python program/key_recovery_sum_avg.py
 ```
 
 This script:
