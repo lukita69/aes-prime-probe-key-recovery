@@ -6,3 +6,5 @@ tqdm>=4.67.1
 pycryptodome>=3.23.0
 pytest>=8.3.5
 scikit-learn>=1.6.1
+plotly>=6.1.2
+joblib>=1.5.1
