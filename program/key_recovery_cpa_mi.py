@@ -60,6 +60,7 @@ def compute_mi(mask, values):
 
 def score_byte(idx, pts, timings):
     """Score key guesses for a single AES byte using MI and cache line timing."""
+    print(f"[INFO] Processing byte {idx}")
     pt_byte = pts[:, idx]
     t_idx = idx % 4  # map byte to corresponding T-table
     relevant_timings = timings[:, t_idx * 16:(t_idx + 1) * 16]
@@ -83,9 +84,12 @@ def score_byte(idx, pts, timings):
 
 def recover_all(pts, timings, procs):
     """Run CPA (MI-based) for all 16 AES key bytes in parallel using joblib."""
-    results = Parallel(n_jobs=procs, backend="threading", prefer="threads")(
-        delayed(score_byte)(i, pts, timings) for i in tqdm(range(16), desc="Recovering key")
-    )
+    with Parallel(n_jobs=procs, backend="threading") as parallel:
+        results = list(tqdm(
+            parallel(delayed(score_byte)(i, pts, timings) for i in range(16)),
+            total=16,
+            desc="Recovering key (true progress)"
+        ))
     results.sort(key=lambda x: x[0])
     key = bytes((r[1] & 0xF0) for r in results)
     confidences = [r[3] for r in results]
