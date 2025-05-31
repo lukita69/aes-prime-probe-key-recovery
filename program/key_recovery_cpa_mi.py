@@ -85,11 +85,11 @@ def score_byte(idx, pts, timings):
 def recover_all(pts, timings, procs):
     """Run CPA (MI-based) for all 16 AES key bytes in parallel using joblib."""
     with Parallel(n_jobs=procs, backend="threading") as parallel:
-        results = list(tqdm(
-            parallel(delayed(score_byte)(i, pts, timings) for i in range(16)),
-            total=16,
-            desc="Recovering key (true progress)"
-        ))
+        tasks = (delayed(score_byte)(i, pts, timings) for i in range(16))
+        results = []
+        for result in tqdm(parallel(tasks), total=16, desc="Recovering key (true progress)"):
+            results.append(result)
+
     results.sort(key=lambda x: x[0])
     key = bytes((r[1] & 0xF0) for r in results)
     confidences = [r[3] for r in results]
