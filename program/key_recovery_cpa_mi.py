@@ -81,7 +81,7 @@ def score_byte(idx, pts, timings):
     best = top5[0]
     conf = (scores[top5[0]] - scores[top5[1]]) / scores[top5[0]] if scores[top5[0]] != 0 else 0
     top_guesses = [(int(k), float(scores[k])) for k in top5]
-
+    print(f"[DEBUG] Byte {idx} best guess: {best:02x} with score {scores[best]:.5f}, confidence {conf:.3f}")
     return (idx, best, scores[best], conf, mi_matrix, top_guesses)
 
 def recover_all(pts, timings, procs):
