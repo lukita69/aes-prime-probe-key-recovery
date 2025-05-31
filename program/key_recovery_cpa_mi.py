@@ -60,7 +60,6 @@ def compute_mi(mask, values):
 
 def score_byte(idx, pts, timings):
     """Score key guesses for a single AES byte using MI and cache line timing."""
-    print(f"[INFO] Processing byte {idx}")
     pt_byte = pts[:, idx]
     t_idx = idx % 4  # map byte to corresponding T-table
     relevant_timings = timings[:, t_idx * 16:(t_idx + 1) * 16]
@@ -82,10 +81,11 @@ def score_byte(idx, pts, timings):
     top_guesses = [(int(k), float(scores[k])) for k in top5]
     return idx, best, scores[best], conf, mi_matrix, top_guesses
 
+
 def recover_all(pts, timings, procs):
-    """Run CPA (MI-based) for all 16 AES key bytes in parallel using joblib."""
-    with Parallel(n_jobs=procs, backend="threading") as parallel:
-        tasks = (delayed(score_byte)(i, pts, timings) for i in range(16))
+    """Run CPA (MI-based) for all 16 AES key bytes in parallel using joblib with proper progress tracking."""
+    tasks = (delayed(score_byte)(i, pts, timings) for i in range(16))
+    with Parallel(n_jobs=procs, backend="loky") as parallel:
         results = []
         for result in tqdm(parallel(tasks), total=16, desc="Recovering key (true progress)"):
             results.append(result)
@@ -96,6 +96,7 @@ def recover_all(pts, timings, procs):
     matrices = {r[0]: r[4] for r in results}
     top_guesses_all = [(r[0], r[5]) for r in results]
     return key, confidences, matrices, top_guesses_all
+
 
 def export_top_guesses(top_guesses_all, out_file):
     """Save top high nibble guesses per byte to CSV."""
