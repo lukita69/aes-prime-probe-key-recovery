@@ -60,6 +60,7 @@ def compute_mi(mask, values):
 
 def score_byte(idx, pts, timings):
     """Score key guesses for a single AES byte using MI and cache line timing."""
+    print(f"[INFO] Processing byte {idx}")
     pt_byte = pts[:, idx]
     t_idx = idx % 4  # map byte to corresponding T-table
     relevant_timings = timings[:, t_idx * 16:(t_idx + 1) * 16]
@@ -80,7 +81,6 @@ def score_byte(idx, pts, timings):
     conf = (scores[top5[0]] - scores[top5[1]]) / scores[top5[0]] if scores[top5[0]] != 0 else 0
     top_guesses = [(int(k), float(scores[k])) for k in top5]
     return idx, best, scores[best], conf, mi_matrix, top_guesses
-
 
 def recover_all(pts, timings, procs):
     """Run CPA (MI-based) for all 16 AES key bytes in parallel using joblib with proper progress tracking."""
