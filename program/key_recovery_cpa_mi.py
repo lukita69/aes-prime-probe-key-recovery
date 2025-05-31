@@ -85,8 +85,8 @@ def score_byte(idx, pts, timings):
 def recover_all(pts, timings, procs):
     """Run CPA (MI-based) for all 16 AES key bytes in parallel using joblib with proper progress tracking."""
     tasks = (delayed(score_byte)(i, pts, timings) for i in range(16))
+    results = []
     with Parallel(n_jobs=procs, backend="loky") as parallel:
-        results = []
         for result in tqdm(parallel(tasks), total=16, desc="Recovering key (true progress)"):
             results.append(result)
 
