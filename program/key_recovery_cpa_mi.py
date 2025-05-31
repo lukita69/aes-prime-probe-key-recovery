@@ -64,13 +64,17 @@ def score_byte(idx, pts, timings):
     print(f"[INFO] Processing byte {idx}")
     pt_byte = pts[:, idx]
     t_idx = idx % 4
+    print(f"[DEBUG] Using table index {t_idx} for byte {idx}")
     relevant_timings = timings[:, t_idx * 16:(t_idx + 1) * 16]
     mi_matrix = np.zeros((256, 16), dtype=np.float32)
+    print(f"[DEBUG] Shape of relevant timings: {relevant_timings.shape}")
 
     for k in range(256):
         predicted = np.bitwise_xor(pt_byte, k) // 16
+        print(f"[DEBUG] Processing key guess {k:02x} for byte {idx}")
         for line in range(16):
             mask = (predicted == line).astype(int)
+            print(f"[DEBUG] Line {line}: mask sum = {mask.sum()}")
             if mask.sum() == 0 or mask.sum() == len(mask):
                 continue
             mi = compute_mi(mask, relevant_timings[:, line])
